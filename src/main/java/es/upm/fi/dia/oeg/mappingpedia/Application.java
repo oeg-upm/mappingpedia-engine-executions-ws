@@ -11,10 +11,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.web.MultipartProperties;
 
-import es.upm.fi.dia.oeg.mappingpedia.utility.CKANUtility;
-import es.upm.fi.dia.oeg.mappingpedia.utility.GitHubUtility;
-import es.upm.fi.dia.oeg.mappingpedia.utility.JenaClient;
-import es.upm.fi.dia.oeg.mappingpedia.utility.VirtuosoClient;
+
 
 @SpringBootApplication
 public class Application {
@@ -60,9 +57,9 @@ public class Application {
 
 		SpringApplication.run(Application.class, args);
 		MultipartProperties multipartProperties = new MultipartProperties();
-		multipartProperties.setLocation("./mpe-datasets-temp");
+		multipartProperties.setLocation("./mpe-executions-ws-temp");
 		String multiPartPropertiesLocation = multipartProperties.getLocation();
 		logger.info("multiPartPropertiesLocation = " + multiPartPropertiesLocation);
-		logger.info("Mappingpedia Engine Dataset WS started.\n\n\n");
+		logger.info("Mappingpedia Engine Executions WS started.\n\n\n");
 	}
 }
