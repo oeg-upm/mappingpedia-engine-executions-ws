@@ -3,6 +3,7 @@ package es.upm.fi.dia.oeg.mappingpedia;
 import java.io.File;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -10,12 +11,17 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.servlet.annotation.MultipartConfig;
 
 
+import com.mashape.unirest.http.HttpResponse;
+import com.mashape.unirest.http.JsonNode;
+import com.mashape.unirest.http.Unirest;
+import com.mashape.unirest.request.HttpRequestWithBody;
 import es.upm.fi.dia.oeg.mappingpedia.controller.MappingExecutionController;
 import es.upm.fi.dia.oeg.mappingpedia.model.*;
 import es.upm.fi.dia.oeg.mappingpedia.model.result.*;
 import es.upm.fi.dia.oeg.mappingpedia.utility.*;
 import org.apache.commons.io.FileUtils;
 //import org.apache.jena.ontology.OntModel;
+import org.json.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,11 +61,13 @@ public class ExecutionsWSController {
                 String.format(template, name));
     }
 
+    /*
     @RequestMapping(value="/", method= RequestMethod.GET, produces={"application/ld+json"})
     public Inbox get() {
         logger.info("GET / ...");
         return new Inbox();
     }
+    */
 
     @RequestMapping(value="/", method= RequestMethod.HEAD, produces={"application/ld+json"})
     public ResponseEntity head() {
@@ -280,7 +288,7 @@ public class ExecutionsWSController {
 
             //Dataset related fields
             , @RequestParam(value="dataset_id", required = false) String pDatasetId
-            , @RequestParam(value="ckan_package_id", required = false) String ckanPackageId
+            , @RequestParam(value="ckan_package_id", required = false) String pCkanPackageId
             , @RequestParam(value="ckan_package_name", required = false) String ckanPackageName
 
             //Distribution related fields
@@ -317,7 +325,7 @@ public class ExecutionsWSController {
         logger.info("\n\n\nPOST /executions");
         logger.info("organization_id = " + organizationId);
         logger.info("dataset_id = " + pDatasetId);
-        logger.info("ckan_package_id = " + ckanPackageId);
+        logger.info("ckan_package_id = " + pCkanPackageId);
         logger.info("ckan_package_name = " + ckanPackageName);
         logger.info("distributionDownloadURL = " + pDistributionDownloadURL);
         logger.info("ckan_resources_ids = " + ckanResourcesIds);
@@ -336,20 +344,43 @@ public class ExecutionsWSController {
         try {
             Agent organization = Agent.apply(organizationId);
 
-            Dataset dataset = this.datasetController.findOrCreate(
-                    organizationId, pDatasetId, ckanPackageId, ckanPackageName);
-            logger.info("dataset.dctIdentifier() = " + dataset.dctIdentifier());
-            logger.info("dataset.ckanPackageId = " + dataset.ckanPackageId());
+//            Dataset dataset = this.datasetController.findOrCreate(
+//                    organizationId, pDatasetId, ckanPackageId, ckanPackageName);
+//            logger.info("dataset.dctIdentifier() = " + dataset.dctIdentifier());
+//            logger.info("dataset.ckanPackageId = " + dataset.ckanPackageId());
+            String datasetId = pDatasetId;
+            String ckanPackageId = pCkanPackageId;
+            if(pDatasetId == null) {
+                String datasetsServerUrl = MPCConstants.ENGINE_DATASETS_SERVER() + "datasets";
+                if(pCkanPackageId != null && ckanPackageName == null) {
+                    ckanPackageId = pCkanPackageId;
+                    datasetsServerUrl += "?ckan_package_id=" + pCkanPackageId;
+                } else if(ckanPackageName != null && pCkanPackageId  == null) {
+                    datasetsServerUrl += "?ckan_package_name=" + ckanPackageName;
+                }
+
+                logger.info("datasetsServerUrl = " + datasetsServerUrl);
+                HttpResponse<JsonNode> jsonResponse = Unirest.get(datasetsServerUrl)
+                        .asJson();
+                JSONObject responseResultObject = jsonResponse.getBody().getObject();
+                datasetId = responseResultObject.getString("id");
+                if(pCkanPackageId == null) {
+                    ckanPackageId = responseResultObject.getString("ckan_package_id");
+                }
+            }
+            logger.info("datasetId = " + datasetId);
+            logger.info("ckanPackageId = " + ckanPackageId);
+
 
             //List<String> listDistributionDownloadURLs = null;
             //String[] arrayDistributionDownloadURLs = null;
-            //List<UnannotatedDistribution> unannotatedDistributions = new ArrayList<UnannotatedDistribution>();
+            List<UnannotatedDistribution> unannotatedDistributions = new ArrayList<UnannotatedDistribution>();
             if(ckanResourcesIds != null) {
                 List<String> listCKANResourcesIds = Arrays.asList(ckanResourcesIds.split(","));
                 logger.info("listCKANResourcesIds = " + listCKANResourcesIds);
 
                 for (String resourceId:listCKANResourcesIds) {
-                    UnannotatedDistribution unannotatedDistribution = new UnannotatedDistribution(dataset);
+                    UnannotatedDistribution unannotatedDistribution = new UnannotatedDistribution(organizationId, datasetId);
                     unannotatedDistribution.ckanResourceId_$eq(resourceId);
                     String ckanResourceDownloadUrl = this.ckanClient.getResourcesUrlsAsJava(resourceId).iterator().next();
                     unannotatedDistribution.dcatDownloadURL_$eq(ckanResourceDownloadUrl);
@@ -358,15 +389,18 @@ public class ExecutionsWSController {
                     }
                     unannotatedDistribution.dcatMediaType_$eq(distributionMediaType);
 
-                    dataset.addDistribution(unannotatedDistribution);
+                    //dataset.addDistribution(unannotatedDistribution);
+                    unannotatedDistributions.add(unannotatedDistribution);
                 }
             } else if(pDistributionDownloadURL != null) {
                 List<String> listDistributionDownloadURLs = Arrays.asList(pDistributionDownloadURL.split(","));
                 logger.info("listDistributionDownloadURLs = " + listDistributionDownloadURLs);
                 for(String distributionDownloadURL:listDistributionDownloadURLs) {
-                    UnannotatedDistribution unannotatedDistribution = new UnannotatedDistribution(dataset);
+                    UnannotatedDistribution unannotatedDistribution = new UnannotatedDistribution(
+                            organizationId, datasetId);
                     String distributionDownloadURLTrimmed = distributionDownloadURL.trim();
-                    String resourceId = this.ckanClient.getResourceIdByResourceUrl(dataset.ckanPackageId(), distributionDownloadURLTrimmed);
+                    String resourceId = this.ckanClient.getResourceIdByResourceUrl(
+                            ckanPackageId, distributionDownloadURLTrimmed);
                     unannotatedDistribution.ckanResourceId_$eq(resourceId);
                     unannotatedDistribution.dcatDownloadURL_$eq(distributionDownloadURLTrimmed);
                     if(fieldSeparator != null) {
@@ -374,34 +408,37 @@ public class ExecutionsWSController {
                     }
                     unannotatedDistribution.dcatMediaType_$eq(distributionMediaType);
 
-                    dataset.addDistribution(unannotatedDistribution );
+                    //dataset.addDistribution(unannotatedDistribution );
+                    unannotatedDistributions.add(unannotatedDistribution);
                 }
             }
 
-            MappingDocument md = this.mappingDocumentController.findOrCreate(
-                    mappingDocumentId);
-            logger.info("md.dctIdentifier() = " + md.dctIdentifier());
+//            MappingDocument md = this.mappingDocumentController.findOrCreate(mappingDocumentId);
+//            logger.info("md.dctIdentifier() = " + md.dctIdentifier());
 
+//            if(pMappingDocumentDownloadURL != null) {
+//                md.setDownloadURL(pMappingDocumentDownloadURL);
+//            }
+//            logger.info("md.getDownloadURL() = " + md.getDownloadURL());
+//            String mdDownloadURL = md.getDownloadURL();
+
+            String mdHash;
             if(pMappingDocumentDownloadURL != null) {
-                md.setDownloadURL(pMappingDocumentDownloadURL);
+                mdHash = MappingPediaUtility.calculateHash(
+                        pMappingDocumentDownloadURL, "UTF-8");
+            } else {
+                mdHash = null;
             }
-            logger.info("md.getDownloadURL() = " + md.getDownloadURL());
-            String mdDownloadURL = md.getDownloadURL();
+            logger.debug("mdHash = " + mdHash);
 
-            if(md.hash() == null && mdDownloadURL != null) {
-                md.hash_$eq(MappingPediaUtility.calculateHash(
-                        mdDownloadURL, "UTF-8"));
-            }
-            logger.debug("md.sha = " + md.hash());
-
+            String mdLanguage;
             if(pMappingLanguage != null) {
-                md.mappingLanguage_$eq(pMappingLanguage);
-            } else if(md.mappingLanguage() == null){
-                String mappingLanguage = MappingDocumentController.detectMappingLanguage(
-                        mdDownloadURL);
-                md.mappingLanguage_$eq(mappingLanguage);
+                mdLanguage = pMappingLanguage;
+            } else {
+                mdLanguage = MpcUtility.detectMappingLanguage(
+                        pMappingDocumentDownloadURL);
             }
-            logger.debug("md.getMapping_language() = " + md.getMapping_language());
+            logger.debug("mdLanguage = " + mdLanguage);
 
 
 
@@ -418,8 +455,9 @@ public class ExecutionsWSController {
 
             Boolean useCache = MappingPediaUtility.stringToBoolean(pUseCache);
             Boolean updateResource = MappingPediaUtility.stringToBoolean(pUpdateResource);
-            MappingExecution mappingExecution = new MappingExecution(md
-                    , dataset.getUnannotatedDistributions()
+            MappingExecution mappingExecution = new MappingExecution(
+                    //md
+                    unannotatedDistributions
                     , jdbcConnection
                     , queryFile
                     , outputFilename
@@ -431,6 +469,10 @@ public class ExecutionsWSController {
                     , useCache
                     , callbackURL
                     , updateResource
+                    , mappingDocumentId
+                    , mdHash
+                    , pMappingDocumentDownloadURL
+                    , mdLanguage
             );
             //IN THIS PARTICULAR CASE WE HAVE TO STORE THE EXECUTION RESULT ON CKAN
             return mappingExecutionController.executeMapping(mappingExecution);
@@ -588,8 +630,10 @@ public class ExecutionsWSController {
             , @RequestParam(value="distribution_access_url", required = false) String distributionAccessURL
             , @RequestParam(value="distribution_download_url", required = false) String distributionDownloadURL
             , @RequestParam(value="distribution_file", required = false) MultipartFile distributionMultipartFile
-            , @RequestParam(value="distribution_media_type", required = false, defaultValue="text/csv") String distributionMediaType
-            , @RequestParam(value="distribution_encoding", required = false, defaultValue="UTF-8") String distributionEncoding
+            , @RequestParam(value="distribution_media_type", required = false, defaultValue="text/csv")
+                    String distributionMediaType
+            , @RequestParam(value="distribution_encoding", required = false, defaultValue="UTF-8")
+                    String distributionEncoding
 
             , @RequestParam(value="mapping_document_access_url", required = false) String mappingDocumentAccessURL
             , @RequestParam(value="mapping_document_download_url", required = false) String mappingDocumentDownloadURL
@@ -613,116 +657,178 @@ public class ExecutionsWSController {
             , @RequestParam(value="update_resource", required = false, defaultValue="true") String pUpdateResource
     )
     {
-        logger.info("[POST] /datasets_mappings_execute");
-        boolean generateManifestFile = MappingPediaUtility.stringToBoolean(pGenerateManifestFile);
+        try {
+            logger.info("[POST] /datasets_mappings_execute");
+            boolean generateManifestFile = MappingPediaUtility.stringToBoolean(pGenerateManifestFile);
 
-        Agent organization = new Agent(organizationID);
+            Agent organization = new Agent(organizationID);
 
-        Dataset dataset = new Dataset(organization);
-        if(datasetTitle == null) {
-            dataset.dctTitle_$eq(dataset.dctIdentifier());
-        } else {
-            dataset.dctTitle_$eq(datasetTitle);
-        }
-        if(datasetDescription == null) {
-            dataset.dctDescription_$eq(dataset.dctIdentifier());
-        } else {
-            dataset.dctDescription_$eq(datasetDescription);
-        }
-        dataset.dcatKeyword_$eq(datasetKeywords);
-        dataset.dctLanguage_$eq(datasetLanguage);
-
-        UnannotatedDistribution unannotatedDistribution = null;
-        if(distributionDownloadURL != null ||  distributionMultipartFile != null) {
-            unannotatedDistribution = new UnannotatedDistribution(dataset);
-
-            if(distributionAccessURL == null) {
-                unannotatedDistribution.dcatAccessURL_$eq(distributionDownloadURL);
+            Dataset dataset = new Dataset(organization);
+            if(datasetTitle == null) {
+                dataset.dctTitle_$eq(dataset.dctIdentifier());
             } else {
-                unannotatedDistribution.dcatAccessURL_$eq(distributionAccessURL);
+                dataset.dctTitle_$eq(datasetTitle);
             }
-            unannotatedDistribution.dcatDownloadURL_$eq(distributionDownloadURL);
-
-            if(distributionMultipartFile != null) {
-                unannotatedDistribution.distributionFile_$eq(MappingPediaUtility.multipartFileToFile(
-                        distributionMultipartFile , dataset.dctIdentifier()));
-            }
-
-            unannotatedDistribution.dctDescription_$eq("Distribution for the dataset: " + dataset.dctIdentifier());
-            unannotatedDistribution.dcatMediaType_$eq(distributionMediaType);
-            unannotatedDistribution.encoding_$eq(distributionEncoding);
-            dataset.addDistribution(unannotatedDistribution);
-        }
-
-
-        AddDatasetResult addDatasetResult = this.datasetController.add(
-                dataset, manifestFileRef, generateManifestFile, true);
-        int addDatasetResultStatusCode = addDatasetResult.getStatus_code();
-        if(addDatasetResultStatusCode >= 200 && addDatasetResultStatusCode < 300) {
-            MappingDocument mappingDocument = new MappingDocument();
-            mappingDocument.dctSubject_$eq(mappingDocumentSubject);
-            mappingDocument.dctCreator_$eq(organizationID);
-            mappingDocument.accessURL_$eq(mappingDocumentAccessURL);
-            if(mappingDocumentTitle == null) {
-                mappingDocument.dctTitle_$eq(dataset.dctIdentifier());
+            if(datasetDescription == null) {
+                dataset.dctDescription_$eq(dataset.dctIdentifier());
             } else {
-                mappingDocument.dctTitle_$eq(mappingDocumentTitle);
+                dataset.dctDescription_$eq(datasetDescription);
             }
-            mappingDocument.mappingLanguage_$eq(mappingLanguage);
-            if(mappingDocumentMultipartFile != null) {
-                File mappingDocumentFile = MappingPediaUtility.multipartFileToFile(mappingDocumentMultipartFile, dataset.dctIdentifier());
-                mappingDocument.mappingDocumentFile_$eq(mappingDocumentFile);
+            dataset.dcatKeyword_$eq(datasetKeywords);
+            dataset.dctLanguage_$eq(datasetLanguage);
+
+            UnannotatedDistribution unannotatedDistribution = null;
+            if(distributionDownloadURL != null ||  distributionMultipartFile != null) {
+                unannotatedDistribution = new UnannotatedDistribution(dataset);
+
+                if(distributionAccessURL == null) {
+                    unannotatedDistribution.dcatAccessURL_$eq(distributionDownloadURL);
+                } else {
+                    unannotatedDistribution.dcatAccessURL_$eq(distributionAccessURL);
+                }
+                unannotatedDistribution.dcatDownloadURL_$eq(distributionDownloadURL);
+
+                if(distributionMultipartFile != null) {
+                    unannotatedDistribution.distributionFile_$eq(MpcUtility.multipartFileToFile(
+                            distributionMultipartFile , dataset.dctIdentifier()));
+                }
+
+                unannotatedDistribution.dctDescription_$eq("Distribution for the dataset: " + dataset.dctIdentifier());
+                unannotatedDistribution.dcatMediaType_$eq(distributionMediaType);
+                unannotatedDistribution.encoding_$eq(distributionEncoding);
+                dataset.addDistribution(unannotatedDistribution);
             }
 
-            mappingDocument.setDownloadURL(mappingDocumentDownloadURL);
 
+//            AddDatasetResult addDatasetResult = this.datasetController.add(
+//                    dataset, manifestFileRef, generateManifestFile, true);
+//            int addDatasetResultStatusCode = addDatasetResult.getStatus_code();
+            String datasetsServerUrl = MPCConstants.ENGINE_DATASETS_SERVER() + "datasets";
+            logger.info("datasetsServerUrl = " + datasetsServerUrl);
+            String postDatasetURL = datasetsServerUrl + "/" +  organizationID;
+            logger.info("postDatasetURL = " + postDatasetURL);
+            HttpResponse postDatasetsResponse = Unirest.post(postDatasetURL)
+                    .field("dataset_id", dataset.dctIdentifier())
+                    .field("dataset_title", dataset.dctTitle())
+                    .field("dataset_keywords", dataset.dcatKeyword())
+                    .field("dataset_language", dataset.dctLanguage())
+                    .field("dataset_description", dataset.dctDescription())
 
-            AddMappingDocumentResult addMappingDocumentResult = mappingDocumentController.addNewMappingDocument(dataset, manifestFileRef
-                    , "true", generateManifestFile, mappingDocument);
-            int addMappingDocumentResultStatusCode = addMappingDocumentResult.getStatus_code();
+                    .field("distribution_access_url", unannotatedDistribution.dcatAccessURL())
+                    .field("distribution_download_url", unannotatedDistribution.dcatDownloadURL())
+                    .field("distribution_file", unannotatedDistribution.distributionFile())
+                    .field("distributionMediaType", unannotatedDistribution.dcatMediaType())
+                    .field("distribution_encoding", unannotatedDistribution.encoding())
 
-            boolean useCache = MappingPediaUtility.stringToBoolean(pUseCache);
-            if("true".equalsIgnoreCase(executeMapping)) {
-                if(addMappingDocumentResultStatusCode >= 200 && addMappingDocumentResultStatusCode < 300) {
-                    boolean updateResource = MappingPediaUtility.stringToBoolean(pUpdateResource);
-
-                    try {
-                        MappingExecution mappingExecution = new MappingExecution(
-                                mappingDocument, dataset.getUnannotatedDistributions()
-                                , null, queryFileDownloadURL
-                                , outputFilename, outputFileExtension, outputMediaType
-                                , true
-                                , true
-                                , true
-                                , useCache
-                                , callbackURL
-                                , updateResource
-
-                        );
-
-                        ExecuteMappingResult executeMappingResult =
-                                this.mappingExecutionController.executeMapping(
-                                        mappingExecution);
-
-                        return new AddDatasetMappingExecuteResult (HttpURLConnection.HTTP_OK, addDatasetResult, addMappingDocumentResult, executeMappingResult);
+                    .field("manifestFile", manifestFileRef)
+                    .field("generateManifestFile", pGenerateManifestFile)
+                    .asJson();
+            int addDatasetResultStatusCode = postDatasetsResponse.getStatus();
 
 
 
-                    } catch (Exception e){
-                        e.printStackTrace();
-                        return new AddDatasetMappingExecuteResult (HttpURLConnection.HTTP_INTERNAL_ERROR, addDatasetResult, addMappingDocumentResult, null);
 
+            if(addDatasetResultStatusCode >= 200 && addDatasetResultStatusCode < 300) {
+                MappingDocument mappingDocument = new MappingDocument();
+                mappingDocument.dctSubject_$eq(mappingDocumentSubject);
+                mappingDocument.dctCreator_$eq(organizationID);
+                mappingDocument.accessURL_$eq(mappingDocumentAccessURL);
+                if(mappingDocumentTitle == null) {
+                    mappingDocument.dctTitle_$eq(dataset.dctIdentifier());
+                } else {
+                    mappingDocument.dctTitle_$eq(mappingDocumentTitle);
+                }
+                mappingDocument.mappingLanguage_$eq(mappingLanguage);
+                if(mappingDocumentMultipartFile != null) {
+                    File mappingDocumentFile = MpcUtility.multipartFileToFile(
+                            mappingDocumentMultipartFile, dataset.dctIdentifier());
+                    mappingDocument.mappingDocumentFile_$eq(mappingDocumentFile);
+                }
+
+                mappingDocument.setDownloadURL(mappingDocumentDownloadURL);
+
+
+//                AddMappingDocumentResult addMappingDocumentResult = mappingDocumentController.addNewMappingDocument(
+//                        dataset, manifestFileRef, "true", generateManifestFile, mappingDocument);
+//                int addMappingDocumentResultStatusCode = addMappingDocumentResult.getStatus_code();
+                String mpeMappingsURL = MPCConstants.ENGINE_MAPPINGS_SERVER() + "mappings";
+                logger.info("mpeMappingsURL = " + mpeMappingsURL);
+                String postMappingsURL = mpeMappingsURL + "/" +  organizationID + "/" + dataset.dctIdentifier();
+                logger.info("postMappingsURL = " + postMappingsURL);
+                HttpResponse postMappingsResponse = Unirest.post(postDatasetURL)
+                        .field("mapping_document_file", mappingDocument.mappingDocumentFile())
+                        .field("mapping_document_download_url", mappingDocument.getDownloadURL())
+                        .field("mappingDocumentSubjects", mappingDocument.dctSubject())
+                        .field("mappingDocumentCreator", mappingDocument.dctCreator())
+                        .field("mappingDocumentTitle", mappingDocument.dctTitle())
+                        .field("mapping_language", mappingDocument.mappingLanguage())
+                        .asJson();
+                int addMappingDocumentResultStatusCode = postMappingsResponse.getStatus();
+
+                boolean useCache = MappingPediaUtility.stringToBoolean(pUseCache);
+                if("true".equalsIgnoreCase(executeMapping)) {
+                    if(addMappingDocumentResultStatusCode >= 200 && addMappingDocumentResultStatusCode < 300) {
+                        boolean updateResource = MappingPediaUtility.stringToBoolean(pUpdateResource);
+
+                        try {
+                            MappingExecution mappingExecution = new MappingExecution(
+                                    //mappingDocument
+                                    dataset.getUnannotatedDistributions()
+                                    , null, queryFileDownloadURL
+                                    , outputFilename, outputFileExtension, outputMediaType
+                                    , true
+                                    , true
+                                    , true
+                                    , useCache
+                                    , callbackURL
+                                    , updateResource
+                                    , mappingDocument.dctIdentifier()
+                                    , mappingDocument.hash()
+                                    , mappingDocument.getDownloadURL()
+                                    , mappingDocument.getMapping_language()
+                            );
+
+                            ExecuteMappingResult executeMappingResult =
+                                    this.mappingExecutionController.executeMapping(
+                                            mappingExecution);
+
+                            return new AddDatasetMappingExecuteResult (HttpURLConnection.HTTP_OK
+//                                    , addDatasetResult, addMappingDocumentResult
+                                    , executeMappingResult
+                            );
+
+
+
+                        } catch (Exception e){
+                            e.printStackTrace();
+                            return new AddDatasetMappingExecuteResult (HttpURLConnection.HTTP_INTERNAL_ERROR
+//                                    , addDatasetResult, addMappingDocumentResult
+                                    , null);
+
+                        }
+                    } else {
+                        return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR
+//                                , addDatasetResult, addMappingDocumentResult
+                                , null);
                     }
                 } else {
-                    return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR, addDatasetResult, addMappingDocumentResult, null);
+                    return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR
+//                            ,addDatasetResult, addMappingDocumentResult
+                            , null);
                 }
-            } else {
-                return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR,addDatasetResult, addMappingDocumentResult, null);
-            }
 
-        } else {
-            return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR, addDatasetResult, null, null);
+            } else {
+                return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR
+//                        , addDatasetResult, null
+                        , null);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new AddDatasetMappingExecuteResult(HttpURLConnection.HTTP_INTERNAL_ERROR
+//                    , null, null
+                    , null);
         }
+
     }
 
 
