@@ -14,6 +14,7 @@ import javax.servlet.annotation.MultipartConfig;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
+import com.mashape.unirest.request.HttpRequest;
 import com.mashape.unirest.request.HttpRequestWithBody;
 import es.upm.fi.dia.oeg.mappingpedia.controller.MappingExecutionController;
 import es.upm.fi.dia.oeg.mappingpedia.model.*;
@@ -54,12 +55,13 @@ public class ExecutionsWSController {
     private MPCJenaUtility jenaClient = mappingExecutionController.jenaClient();
     private CKANUtility ckanClient = mappingExecutionController.ckanClient();
 
+    /*
     @RequestMapping(value="/greeting", method= RequestMethod.GET)
     public GreetingJava getGreeting(@RequestParam(value="name", defaultValue="World") String name) {
         logger.info("/greeting(GET) ...");
-        return new GreetingJava(counter.incrementAndGet(),
-                String.format(template, name));
+        return new GreetingJava(counter.incrementAndGet(), String.format(template, name));
     }
+    */
 
     /*
     @RequestMapping(value="/", method= RequestMethod.GET, produces={"application/ld+json"})
@@ -300,7 +302,7 @@ public class ExecutionsWSController {
             , @RequestParam(value="field_separator", required = false) String fieldSeparator
 
             //Mapping document related fields
-            , @RequestParam(value="mapping_document_id", required = false) String mappingDocumentId
+            , @RequestParam(value="mapping_document_id", required = false) String pMappingDocumentId
             , @RequestParam(value="mapping_document_download_url", required = false) String pMappingDocumentDownloadURL
             , @RequestParam(value="mapping_language", required = false) String pMappingLanguage
             , @RequestParam(value="use_cache", required = false) String pUseCache
@@ -329,7 +331,7 @@ public class ExecutionsWSController {
         logger.info("ckan_package_name = " + ckanPackageName);
         logger.info("distributionDownloadURL = " + pDistributionDownloadURL);
         logger.info("ckan_resources_ids = " + ckanResourcesIds);
-        logger.info("mapping_document_id = " + mappingDocumentId);
+        logger.info("mapping_document_id = " + pMappingDocumentId);
         logger.info("mappingDocumentDownloadURL = " + pMappingDocumentDownloadURL);
         logger.info("distribution_encoding = " + distributionEncoding);
         logger.info("use_cache = " + pUseCache);
@@ -399,9 +401,12 @@ public class ExecutionsWSController {
                     UnannotatedDistribution unannotatedDistribution = new UnannotatedDistribution(
                             organizationId, datasetId);
                     String distributionDownloadURLTrimmed = distributionDownloadURL.trim();
-                    String resourceId = this.ckanClient.getResourceIdByResourceUrl(
-                            ckanPackageId, distributionDownloadURLTrimmed);
-                    unannotatedDistribution.ckanResourceId_$eq(resourceId);
+                    if(ckanPackageId != null) {
+                        String resourceId = this.ckanClient.getResourceIdByResourceUrl(
+                                ckanPackageId, distributionDownloadURLTrimmed);
+                        unannotatedDistribution.ckanResourceId_$eq(resourceId);
+                    }
+
                     unannotatedDistribution.dcatDownloadURL_$eq(distributionDownloadURLTrimmed);
                     if(fieldSeparator != null) {
                         unannotatedDistribution.csvFieldSeparator_$eq(fieldSeparator);
@@ -422,10 +427,17 @@ public class ExecutionsWSController {
 //            logger.info("md.getDownloadURL() = " + md.getDownloadURL());
 //            String mdDownloadURL = md.getDownloadURL();
 
+            MappingDocument md;
+            if(pMappingDocumentId == null) {
+                md = new MappingDocument();
+            } else {
+                md = new MappingDocument(pMappingDocumentId);
+            }
+            String mdId = md.dctIdentifier();
+
             String mdHash;
             if(pMappingDocumentDownloadURL != null) {
-                mdHash = MappingPediaUtility.calculateHash(
-                        pMappingDocumentDownloadURL, "UTF-8");
+                mdHash = MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8");
             } else {
                 mdHash = null;
             }
@@ -435,13 +447,23 @@ public class ExecutionsWSController {
             if(pMappingLanguage != null) {
                 mdLanguage = pMappingLanguage;
             } else {
-                mdLanguage = MpcUtility.detectMappingLanguage(
-                        pMappingDocumentDownloadURL);
+                mdLanguage = MpcUtility.detectMappingLanguage(pMappingDocumentDownloadURL);
             }
             logger.debug("mdLanguage = " + mdLanguage);
 
-
-
+            String mpeMappingsUrl = MPCConstants.ENGINE_MAPPINGS_SERVER() + "mappings";
+            String postMappingsUrl = mpeMappingsUrl + "/" + organizationId + "/" + datasetId;
+            HttpRequestWithBody request = Unirest.post(postMappingsUrl);
+            if(pMappingDocumentDownloadURL != null) {
+                request.field("mapping_document_download_url", pMappingDocumentDownloadURL);
+            }
+            try {
+                logger.info("hitting " + postMappingsUrl);
+                HttpResponse postMappingsResponse = request.asJson();
+                logger.info("postMappingsResponse = " + postMappingsResponse);
+            } catch(Exception e) {
+                e.printStackTrace();
+            }
 
 
             JDBCConnection jdbcConnection = null;
@@ -469,7 +491,7 @@ public class ExecutionsWSController {
                     , useCache
                     , callbackURL
                     , updateResource
-                    , mappingDocumentId
+                    , mdId
                     , mdHash
                     , pMappingDocumentDownloadURL
                     , mdLanguage
