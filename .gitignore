@@ -23,3 +23,7 @@
 hs_err_pid*
 *.iml
 .idea
+target
+executions/
+mappingpediaengineexecutions_server_tomcat_basedir/
+upload-dir/
