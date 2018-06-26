@@ -35,7 +35,7 @@
             <AppenderRef ref="App-File-Appender"/>
             <AppenderRef ref="Console-Appender"/>
         </Logger>
-        <Logger name="es.upm.fi.dia.oeg.mappingpedia.ExecutionsApplication" level="error" additivity="false">
+        <Logger name="es.upm.fi.dia.oeg.mappingpedia.Application" level="error" additivity="false">
             <AppenderRef ref="SpringBoot-File-Appender"/>
             <AppenderRef ref="Console-Appender"/>
         </Logger>
