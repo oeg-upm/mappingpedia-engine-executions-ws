@@ -22,6 +22,7 @@ import es.upm.fi.dia.oeg.mappingpedia.model.result.*;
 import es.upm.fi.dia.oeg.mappingpedia.utility.*;
 import org.apache.commons.io.FileUtils;
 //import org.apache.jena.ontology.OntModel;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -351,14 +352,19 @@ public class ExecutionsWSController {
                     datasetsServerUrl += "?ckan_package_name=" + ckanPackageName;
                 }
 
-                logger.info("datasetsServerUrl = " + datasetsServerUrl);
-                HttpResponse<JsonNode> jsonResponse = Unirest.get(datasetsServerUrl)
-                        .asJson();
-                JSONObject responseResultObject = jsonResponse.getBody().getObject();
-                datasetId = responseResultObject.getString("id");
-                if(pCkanPackageId == null) {
-                    ckanPackageId = responseResultObject.getString("ckan_package_id");
+                logger.info("Hitting CKAN endpoint datasetsServerUrl:" + datasetsServerUrl);
+                HttpResponse<JsonNode> jsonResponse = Unirest.get(datasetsServerUrl).asJson();
+                int responseStatus = jsonResponse.getStatus();
+                logger.info("responseStatus = " + responseStatus);
+                if(responseStatus >= 200 && responseStatus < 300) {
+                    JSONObject responseResultObject = jsonResponse.getBody().getObject();
+                    logger.info("responseResultObject = " + responseResultObject);
+                    datasetId = responseResultObject.getJSONArray("results").getJSONObject(0).getString("id");
+                    if(pCkanPackageId == null) {
+                        ckanPackageId = responseResultObject.getString("ckan_package_id");
+                    }
                 }
+
             }
             logger.info("datasetId = " + datasetId);
             logger.info("ckanPackageId = " + ckanPackageId);
@@ -417,42 +423,72 @@ public class ExecutionsWSController {
 //            logger.info("md.getDownloadURL() = " + md.getDownloadURL());
 //            String mdDownloadURL = md.getDownloadURL();
 
+            String mpeMappingsUrl = MPCConstants.ENGINE_MAPPINGS_SERVER() + "mappings";
+
             MappingDocument md;
             if(pMappingDocumentId == null) {
                 md = new MappingDocument();
+
+                if(pMappingDocumentDownloadURL != null) {
+                    md.setDownloadURL(pMappingDocumentDownloadURL);
+                    md.hash_$eq(MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
+                }
             } else {
                 md = new MappingDocument(pMappingDocumentId);
+                if(pMappingDocumentDownloadURL == null) {
+                    String getMappingsUrl = mpeMappingsUrl + "?id=" + pMappingDocumentId;
+                    logger.info("hitting " + getMappingsUrl);
+                    HttpRequest getMappingsRequest = Unirest.get(getMappingsUrl);
+                    HttpResponse<JsonNode>  getMappingsResponse = getMappingsRequest.asJson();
+                    int getMappingsResponseStatus = getMappingsResponse.getStatus();
+                    if(getMappingsResponseStatus >= 200 && getMappingsResponseStatus < 300) {
+                        JSONObject getMappingsResponseBodyObject = getMappingsResponse.getBody().getObject();
+                        JSONArray getMappingsResponseBodyResultsArray = getMappingsResponseBodyObject.getJSONArray("results");
+                        if(getMappingsResponseBodyResultsArray.length() > 0) {
+                            JSONObject mappingDocument = getMappingsResponseBodyResultsArray.getJSONObject(0);
+                            String mdDownloadURL = mappingDocument.getString("downloadURL");
+                            if(mdDownloadURL != null) {
+                                md.setDownloadURL(mdDownloadURL);
+                            } else if(pMappingDocumentDownloadURL != null) {
+                                md.setDownloadURL(pMappingDocumentDownloadURL);
+                            }
+                        } else {
+                            if(pMappingDocumentDownloadURL != null) {
+                                md.setDownloadURL(pMappingDocumentDownloadURL);
+                                md.hash_$eq(MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
+                            }
+                        }
+                    }
+                } else {
+                    md.setDownloadURL(pMappingDocumentDownloadURL);
+                }
             }
             String mdId = md.dctIdentifier();
-
-            String mdHash;
-            if(pMappingDocumentDownloadURL != null) {
-                mdHash = MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8");
-            } else {
-                mdHash = null;
-            }
-            logger.debug("mdHash = " + mdHash);
+            String mdHash = md.hash();
+            String mdDownloadUrl = md.getDownloadURL();
 
             String mdLanguage;
             if(pMappingLanguage != null) {
                 mdLanguage = pMappingLanguage;
             } else {
-                mdLanguage = MpcUtility.detectMappingLanguage(pMappingDocumentDownloadURL);
+                mdLanguage = MpcUtility.detectMappingLanguage(mdDownloadUrl);
             }
-            logger.debug("mdLanguage = " + mdLanguage);
+            logger.info("mdLanguage = " + mdLanguage);
 
-            String mpeMappingsUrl = MPCConstants.ENGINE_MAPPINGS_SERVER() + "mappings";
-            String postMappingsUrl = mpeMappingsUrl + "/" + organizationId + "/" + datasetId;
-            HttpRequestWithBody request = Unirest.post(postMappingsUrl);
-            if(pMappingDocumentDownloadURL != null) {
-                request.field("mapping_document_download_url", pMappingDocumentDownloadURL);
-            }
-            try {
-                logger.info("hitting " + postMappingsUrl);
-                HttpResponse postMappingsResponse = request.asJson();
-                logger.info("postMappingsResponse = " + postMappingsResponse);
-            } catch(Exception e) {
-                e.printStackTrace();
+            if(pMappingDocumentId == null) {
+                String postMappingsUrl = mpeMappingsUrl + "/" + organizationId + "/" + datasetId;
+                HttpRequestWithBody request = Unirest.post(postMappingsUrl);
+                if(pMappingDocumentDownloadURL != null) {
+                    request.field("mapping_document_download_url", mdDownloadUrl);
+                    request.field("mapping_language", md.mappingLanguage());
+                }
+                try {
+                    logger.info("hitting postMappingsUrl:" + postMappingsUrl);
+                    HttpResponse postMappingsResponse = request.asJson();
+                    logger.info("postMappingsResponse = " + postMappingsResponse);
+                } catch(Exception e) {
+                    e.printStackTrace();
+                }
             }
 
 
@@ -483,7 +519,7 @@ public class ExecutionsWSController {
                     , updateResource
                     , mdId
                     , mdHash
-                    , pMappingDocumentDownloadURL
+                    , mdDownloadUrl
                     , mdLanguage
             );
             //IN THIS PARTICULAR CASE WE HAVE TO STORE THE EXECUTION RESULT ON CKAN
