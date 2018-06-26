@@ -53,7 +53,7 @@ public class ExecutionsWSController {
     //private MappingExecutionController mappingExecutionController= new MappingExecutionController(ckanClient, githubClient, virtuosoClient, jenaClient);
     private MappingExecutionController mappingExecutionController = MappingExecutionController.apply();
     private MPCJenaUtility jenaClient = mappingExecutionController.jenaClient();
-    private CKANUtility ckanClient = mappingExecutionController.ckanClient();
+    private MpcCkanUtility ckanClient = mappingExecutionController.ckanClient();
 
     /*
     @RequestMapping(value="/greeting", method= RequestMethod.GET)
@@ -140,46 +140,46 @@ public class ExecutionsWSController {
     @RequestMapping(value="/github_repo_url", method= RequestMethod.GET)
     public String getGitHubRepoURL() {
         logger.info("GET /github_repo_url ...");
-        return MappingPediaEngine.mappingpediaProperties().githubRepository();
+        return mappingExecutionController.properties().githubRepository();
     }
 
     @RequestMapping(value="/ckan_datasets", method= RequestMethod.GET)
     public ListResult getCKANDatasets(@RequestParam(value="catalogUrl", required = false) String catalogUrl) {
         if(catalogUrl == null) {
-            catalogUrl = MappingPediaEngine.mappingpediaProperties().ckanURL();
+            catalogUrl = mappingExecutionController.properties().ckanURL();
         }
         logger.info("GET /ckanDatasetList ...");
-        return CKANUtility.getDatasetList(catalogUrl);
+        return MpcCkanUtility.getDatasetList(catalogUrl);
     }
 
     @RequestMapping(value="/virtuoso_enabled", method= RequestMethod.GET)
     public String getVirtuosoEnabled() {
         logger.info("GET /virtuosoEnabled ...");
-        return MappingPediaEngine.mappingpediaProperties().virtuosoEnabled() + "";
+        return mappingExecutionController.properties().virtuosoEnabled() + "";
     }
 
     @RequestMapping(value="/mappingpedia_graph", method= RequestMethod.GET)
     public String getMappingpediaGraph() {
         logger.info("/getMappingPediaGraph(GET) ...");
-        return MappingPediaEngine.mappingpediaProperties().graphName();
+        return mappingExecutionController.properties().graphName();
     }
 
     @RequestMapping(value="/ckan_api_action_organization_create", method= RequestMethod.GET)
     public String getCKANAPIActionOrganizationCreate() {
         logger.info("GET /ckanActionOrganizationCreate ...");
-        return MappingPediaEngine.mappingpediaProperties().ckanActionOrganizationCreate();
+        return mappingExecutionController.properties().ckanActionOrganizationCreate();
     }
 
     @RequestMapping(value="/ckan_api_action_package_create", method= RequestMethod.GET)
     public String getCKANAPIActionPpackageCreate() {
         logger.info("GET /ckanActionPackageCreate ...");
-        return MappingPediaEngine.mappingpediaProperties().ckanActionPackageCreate();
+        return mappingExecutionController.properties().ckanActionPackageCreate();
     }
 
     @RequestMapping(value="/ckan_api_action_resource_create", method= RequestMethod.GET)
     public String getCKANAPIActionResourceCreate() {
         logger.info("GET /getCKANActionResourceCreate ...");
-        return MappingPediaEngine.mappingpediaProperties().ckanActionResourceCreate();
+        return mappingExecutionController.properties().ckanActionResourceCreate();
     }
 
     @RequestMapping(value="/ckan_resource_id", method= RequestMethod.GET)
@@ -223,10 +223,10 @@ public class ExecutionsWSController {
             , @RequestParam(value="packageId", required = true) String packageId
     ) {
         logger.info("POST /ckanResource...");
-        String ckanURL = MappingPediaEngine.mappingpediaProperties().ckanURL();
-        String ckanKey = MappingPediaEngine.mappingpediaProperties().ckanKey();
+        String ckanURL = mappingExecutionController.properties().ckanURL();
+        String ckanKey = mappingExecutionController.properties().ckanKey();
 
-        CKANUtility ckanClient = new CKANUtility(ckanURL, ckanKey);
+        MpcCkanUtility ckanClient = new MpcCkanUtility(ckanURL, ckanKey);
         File file = new File(filePath);
         try {
             if(!file.exists()) {
@@ -248,22 +248,12 @@ public class ExecutionsWSController {
             , @RequestParam(value="dataset_language", required = true) String datasetLanguage
     ) {
         logger.info("POST /dataset_language ...");
-        String ckanURL = MappingPediaEngine.mappingpediaProperties().ckanURL();
-        String ckanKey = MappingPediaEngine.mappingpediaProperties().ckanKey();
+        String ckanURL = mappingExecutionController.properties().ckanURL();
+        String ckanKey = mappingExecutionController.properties().ckanKey();
 
-        CKANUtility ckanClient = new CKANUtility(ckanURL, ckanKey);
+        MpcCkanUtility ckanClient = new MpcCkanUtility(ckanURL, ckanKey);
         return ckanClient.updateDatasetLanguage(organizationId, datasetLanguage);
     }
-
-    @RequestMapping(value="/triples_maps", method= RequestMethod.GET)
-    public ListResult getTriplesMaps() {
-        logger.info("/triplesMaps ...");
-        ListResult listResult = MappingPediaEngine.getAllTriplesMaps();
-        //logger.info("listResult = " + listResult);
-
-        return listResult;
-    }
-
 
 
     @RequestMapping(value="/properties", method= RequestMethod.GET)
@@ -628,17 +618,6 @@ public class ExecutionsWSController {
 
 
 
-    @RequestMapping(value="/mappings/{mappingpediaUsername}/{mappingDirectory}/{mappingFilename:.+}", method= RequestMethod.GET)
-    public GeneralResult getMapping(
-            @PathVariable("mappingpediaUsername") String mappingpediaUsername
-            , @PathVariable("mappingDirectory") String mappingDirectory
-            , @PathVariable("mappingFilename") String mappingFilename
-    )
-    {
-        logger.info("GET /mappings/{mappingpediaUsername}/{mappingDirectory}/{mappingFilename}");
-        return MappingPediaEngine.getMapping(mappingpediaUsername, mappingDirectory, mappingFilename);
-    }
-
 
     @RequestMapping(value = "/datasets_mappings_execute", method= RequestMethod.POST)
     public AddDatasetMappingExecuteResult postDatasetsAndMappingsThenExecute(
@@ -856,26 +835,18 @@ public class ExecutionsWSController {
 
 
 
-    @RequestMapping(value = "/queries/{mappingpediaUsername}/{datasetID}", method= RequestMethod.POST)
+    @RequestMapping(value = "/queries/{organizationId}/{datasetId}", method= RequestMethod.POST)
     public GeneralResult postQueries(
             @RequestParam("queryFile") MultipartFile queryFileRef
-            , @PathVariable("mappingpediaUsername") String mappingpediaUsername
-            , @PathVariable("datasetID") String datasetID
+            , @PathVariable("organizationId") String organizationId
+            , @PathVariable("datasetId") String datasetId
     )
     {
         logger.info("[POST] /queries/{mappingpediaUsername}/{datasetID}");
-        return MappingPediaEngine.addQueryFile(queryFileRef, mappingpediaUsername, datasetID);
+        File queryFile = MpcUtility.multipartFileToFile(queryFileRef);
+        return mappingExecutionController.addQueryFile(queryFile, organizationId, datasetId);
     }
 
-
-    @RequestMapping(value = "/rdf_file", method= RequestMethod.POST)
-    public GeneralResult postRDFFile(
-            @RequestParam("rdfFile") MultipartFile fileRef
-            , @RequestParam(value="graphURI") String graphURI)
-    {
-        logger.info("/storeRDFFile...");
-        return MappingPediaEngine.storeRDFFile(fileRef, graphURI);
-    }
 
     @RequestMapping(value="/ogd/utility/subclasses", method= RequestMethod.GET)
     public ListResult getSubclassesDetails(
@@ -883,7 +854,8 @@ public class ExecutionsWSController {
     ) {
         logger.info("GET /ogd/utility/subclasses ...");
         logger.info("aClass = " + aClass);
-        ListResult result = MappingPediaEngine.getSchemaOrgSubclassesDetail(aClass) ;
+        ListResult result = mappingExecutionController.jenaClient().getSchemaOrgSubclassesDetail(
+                aClass) ;
         //logger.info("result = " + result);
         return result;
     }
@@ -894,7 +866,7 @@ public class ExecutionsWSController {
     ) {
         logger.info("GET /ogd/utility/subclassesSummary ...");
         logger.info("aClass = " + aClass);
-        ListResult result = MappingPediaEngine.getSubclassesSummary(aClass) ;
+        ListResult result = mappingExecutionController.jenaClient().getSubclassesSummary(aClass) ;
         //logger.info("result = " + result);
         return result;
     }
