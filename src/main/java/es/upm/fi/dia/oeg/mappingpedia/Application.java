@@ -24,6 +24,6 @@ public class Application {
 		String multiPartPropertiesLocation = multipartProperties.getLocation();
 		logger.info("multiPartPropertiesLocation = " + multiPartPropertiesLocation);
 
-		logger.info("Mappingpedia Engine Application WS started.\n\n\n");
+		logger.info("Mappingpedia Engine Executions WS started.\n\n\n");
 	}
 }
