@@ -301,6 +301,7 @@ public class ExecutionsWSController {
 
             //Execution related field
             , @RequestParam(value="query_file", required = false) String queryFile
+            , @RequestParam(value="query_string", required = false) String queryString
             , @RequestParam(value="output_filename", required = false) String outputFilename
             , @RequestParam(value="output_fileextension", required = false) String outputFileExtension
             , @RequestParam(value="output_mediatype", required = false, defaultValue="text/txt") String outputMediaType
@@ -352,13 +353,13 @@ public class ExecutionsWSController {
                     datasetsServerUrl += "?ckan_package_name=" + ckanPackageName;
                 }
 
-                logger.info("Hitting CKAN endpoint datasetsServerUrl:" + datasetsServerUrl);
+                logger.info("Hitting datasets Server Url:" + datasetsServerUrl);
                 HttpResponse<JsonNode> jsonResponse = Unirest.get(datasetsServerUrl).asJson();
                 int responseStatus = jsonResponse.getStatus();
                 logger.info("responseStatus = " + responseStatus);
                 if(responseStatus >= 200 && responseStatus < 300) {
                     JSONObject responseResultObject = jsonResponse.getBody().getObject();
-                    logger.info("responseResultObject = " + responseResultObject);
+                    //logger.info("responseResultObject = " + responseResultObject);
                     datasetId = responseResultObject.getJSONArray("results").getJSONObject(0).getString("id");
                     if(pCkanPackageId == null) {
                         ckanPackageId = responseResultObject.getString("ckan_package_id");
@@ -466,6 +467,8 @@ public class ExecutionsWSController {
             String mdId = md.dctIdentifier();
             String mdHash = md.hash();
             String mdDownloadUrl = md.getDownloadURL();
+            logger.info("md.getDownloadURL() = " + md.getDownloadURL());
+
 
             String mdLanguage;
             if(pMappingLanguage != null) {
@@ -477,14 +480,16 @@ public class ExecutionsWSController {
 
             if(pMappingDocumentId == null) {
                 String postMappingsUrl = mpeMappingsUrl + "/" + organizationId + "/" + datasetId;
-                HttpRequestWithBody request = Unirest.post(postMappingsUrl);
+                //HttpRequestWithBody request = Unirest.post(postMappingsUrl);
+
                 if(pMappingDocumentDownloadURL != null) {
-                    request.field("mapping_document_download_url", mdDownloadUrl);
-                    request.field("mapping_language", md.mappingLanguage());
+                    logger.info("setting parameters for:" + postMappingsUrl);
                 }
                 try {
-                    logger.info("hitting postMappingsUrl:" + postMappingsUrl);
-                    HttpResponse postMappingsResponse = request.asJson();
+                    HttpResponse postMappingsResponse = Unirest.post(postMappingsUrl)
+                            .field("mapping_document_download_url", mdDownloadUrl)
+                            .field("mapping_language", md.mappingLanguage()).asJson();
+
                     logger.info("postMappingsResponse = " + postMappingsResponse);
                 } catch(Exception e) {
                     e.printStackTrace();
@@ -792,7 +797,7 @@ public class ExecutionsWSController {
                 logger.info("mpeMappingsURL = " + mpeMappingsURL);
                 String postMappingsURL = mpeMappingsURL + "/" +  organizationID + "/" + dataset.dctIdentifier();
                 logger.info("postMappingsURL = " + postMappingsURL);
-                HttpResponse postMappingsResponse = Unirest.post(postDatasetURL)
+                HttpResponse postMappingsResponse = Unirest.post(postMappingsURL)
                         .field("mapping_document_file", mappingDocument.mappingDocumentFile())
                         .field("mapping_document_download_url", mappingDocument.getDownloadURL())
                         .field("mappingDocumentSubjects", mappingDocument.dctSubject())
