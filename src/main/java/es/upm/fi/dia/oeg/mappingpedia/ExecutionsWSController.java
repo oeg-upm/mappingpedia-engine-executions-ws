@@ -946,4 +946,15 @@ public class ExecutionsWSController {
         return result;
     }
 
+    @RequestMapping(value="/instances", method= RequestMethod.GET)
+    public ListResult getInstances(
+            @RequestParam(value="class_name", defaultValue = "") String className
+    ) {
+        logger.info("GET /instances ...");
+        logger.info("class_name = " + className);
+        ListResult result = mappingExecutionController.findInstancesByClass(className) ;
+        //logger.info("result = " + result);
+        return result;
+    }
+
 }
