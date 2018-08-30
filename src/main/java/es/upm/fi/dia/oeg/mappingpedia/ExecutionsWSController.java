@@ -117,6 +117,148 @@ public class ExecutionsWSController {
                 mappingDocumentSHA, datasetDistributionSHA);
     }
 
+    @RequestMapping(value="/executions", method= RequestMethod.GET)
+    public ExecuteMappingResult getExecutions(
+            @RequestParam(value="dataset_id") String datasetId
+            , @RequestParam(value="mapping_document_id") String mappingDocumentId
+            , @RequestParam(value="use_cache", defaultValue="true") String useCache
+            , @RequestParam(value="callback_url", required = false) String callbackURL
+    )
+    {
+
+        logger.info("GET /mappingexecutions ...");
+        logger.info("dataset_id = " + datasetId);
+        logger.info("mapping_document_id = " + mappingDocumentId);
+
+
+        try {
+            //GET ORGANIZATION ID
+            String getDatasetUri = MPCConstants.ENGINE_DATASETS_SERVER() + "dataset?dataset_id=" + datasetId;
+            logger.info("Hitting getDatasetUri:" + getDatasetUri);
+            HttpResponse<JsonNode> jsonResponse = Unirest.get(getDatasetUri).asJson();
+            int responseStatus = jsonResponse.getStatus();
+            logger.info("responseStatus = " + responseStatus);
+            String organizationId;
+            if(responseStatus >= 200 && responseStatus < 300) {
+                JSONObject responseResultObject = jsonResponse.getBody().getObject();
+                //logger.info("responseResultObject = " + responseResultObject);
+                organizationId = responseResultObject.getJSONArray("results").getJSONObject(0).getString("ckan_organization_name");
+                logger.info("organizationId = " + organizationId);
+            } else {
+                ExecuteMappingResult internalError = new ExecuteMappingResult(
+                        HttpURLConnection.HTTP_INTERNAL_ERROR, "Unable to obtain organization id"
+                );
+                return internalError;
+            }
+
+
+            //GET MAPPING DOWNLOAD URL
+            String getMappingsUri = MPCConstants.ENGINE_MAPPINGS_SERVER() + "mappings?id=" + mappingDocumentId;
+            logger.info("Hitting getMappingsUri:" + getMappingsUri);
+            jsonResponse = Unirest.get(getMappingsUri).asJson();
+            responseStatus = jsonResponse.getStatus();
+            logger.info("responseStatus = " + responseStatus);
+            String mdDownloadUrl;
+            if(responseStatus >= 200 && responseStatus < 300) {
+                JSONObject responseResultObject = jsonResponse.getBody().getObject();
+                mdDownloadUrl = responseResultObject.getJSONArray("results").getJSONObject(0).getString("downloadURL");
+                logger.info("mdDownloadUrl = " + mdDownloadUrl);
+            } else {
+                ExecuteMappingResult internalError = new ExecuteMappingResult(
+                        HttpURLConnection.HTTP_INTERNAL_ERROR, "Unable to obtain mapping document download URL"
+                );
+                return internalError;
+            }
+
+            //GET DISTRIBUTION DOWNLOAD URL
+            String getDistributionsUri = MPCConstants.ENGINE_DATASETS_SERVER() + "distributions?dataset_id=" + datasetId;
+            logger.info("Hitting getDistributionsUri:" + getDistributionsUri);
+            jsonResponse = Unirest.get(getDistributionsUri).asJson();
+            responseStatus = jsonResponse.getStatus();
+            logger.info("responseStatus = " + responseStatus);
+            String distributionDownloadUrl;
+            if(responseStatus >= 200 && responseStatus < 300) {
+                JSONObject responseResultObject = jsonResponse.getBody().getObject();
+                distributionDownloadUrl = responseResultObject.getJSONArray("results").getJSONObject(0).getString("download_url");
+                logger.info("distributionDownloadUrl = " + distributionDownloadUrl);
+            } else {
+                ExecuteMappingResult internalError = new ExecuteMappingResult(
+                        HttpURLConnection.HTTP_INTERNAL_ERROR, "Unable to obtain mapping document download URL"
+                );
+                return internalError;
+            }
+
+            //EXECUTE MAPPING
+   /*         String executeMappingUri = MPCConstants.ENGINE_EXECUTIONS_SERVER();
+            logger.info("Hitting executeMappingUri:" + executeMappingUri);
+            jsonResponse = Unirest.post(executeMappingUri)
+                    .field("mapping_document_download_url", mdDownloadUrl)
+                    .field("distribution_download_url", distributionDownloadUrl)
+                    .field("organization_id", organizationId)
+                    .field("use_cache", useCache)
+                    .asJson();
+            responseStatus = jsonResponse.getStatus();
+            logger.info("responseStatus = " + responseStatus);*/
+            return this.postExecutions(
+                    organizationId
+
+                    //Dataset related fields
+                    , datasetId
+                    , null
+                    , null
+
+                    //Distribution related fields
+                    , null
+                    , null
+                    , distributionDownloadUrl
+                    , null
+                    , null
+                    , null
+
+                    //Mapping document related fields
+                    , mappingDocumentId
+                    , mdDownloadUrl
+                    , null
+                    , useCache
+                    , callbackURL
+
+                    //Execution related field
+                    , null
+                    , null
+                    , null
+                    , null
+                    , null
+                    , null
+
+                    //jdbc related field
+                    , null
+                    , null
+                    , null
+                    , null
+                    , null
+                    , null
+
+            );
+
+
+
+
+
+        } catch (Exception e) {
+            ExecuteMappingResult internalError = new ExecuteMappingResult(
+                    HttpURLConnection.HTTP_INTERNAL_ERROR, e.getMessage()
+            );
+            return internalError;
+        }
+
+
+/*        ExecuteMappingResult executeMappingResult = new ExecuteMappingResult(
+                HttpURLConnection.HTTP_OK, "OK"
+        );
+        return executeMappingResult;*/
+
+    }
+
     /*
     @RequestMapping(value="/greeting/{name}", method= RequestMethod.PUT)
     public GreetingJava putGreeting(@PathVariable("name") String name) {
