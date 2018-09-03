@@ -42,6 +42,11 @@ public class ExecutionsWSController {
     private static final String template = "Hello, %s!";
     private final AtomicLong counter = new AtomicLong();
 
+    @RequestMapping(value="/", method= RequestMethod.GET, produces={"application/ld+json"})
+    public ExecutionsInbox get() {
+        logger.info("GET / ...");
+        return new ExecutionsInbox();
+    }
 
     //private OntModel ontModel = MappingPediaEngine.ontologyModel();
 
