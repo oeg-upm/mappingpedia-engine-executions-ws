@@ -27,3 +27,6 @@ target
 executions/
 mappingpediaengineexecutions_server_tomcat_basedir/
 upload-dir/
+.classpath
+.project
+.settings/
