@@ -15,7 +15,6 @@ import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.request.HttpRequest;
-import com.mashape.unirest.request.HttpRequestWithBody;
 import es.upm.fi.dia.oeg.mappingpedia.controller.MappingExecutionController;
 import es.upm.fi.dia.oeg.mappingpedia.model.*;
 import es.upm.fi.dia.oeg.mappingpedia.model.result.*;
@@ -128,15 +127,19 @@ public class ExecutionsWSController {
             , @RequestParam(value="mapping_document_id") String mappingDocumentId
             , @RequestParam(value="use_cache", defaultValue="true") String useCache
             , @RequestParam(value="callback_url", required = false) String callbackURL
+            , @RequestParam(value="query_url", required = false) String queryFileUrl
     )
     {
 
         logger.info("GET /mappingexecutions ...");
         logger.info("dataset_id = " + datasetId);
         logger.info("mapping_document_id = " + mappingDocumentId);
-
+        logger.info("query_url = " + queryFileUrl);
 
         try {
+            MappingExecution mappingExecution = MappingExecution.apply(datasetId, mappingDocumentId, queryFileUrl);
+            return this.mappingExecutionController.executeMapping(mappingExecution);
+            /*
             //GET ORGANIZATION ID
             String getDatasetUri = MPCConstants.ENGINE_DATASETS_SERVER() + "dataset?dataset_id=" + datasetId;
             logger.info("Hitting getDatasetUri:" + getDatasetUri);
@@ -193,17 +196,6 @@ public class ExecutionsWSController {
                 return internalError;
             }
 
-            //EXECUTE MAPPING
-   /*         String executeMappingUri = MPCConstants.ENGINE_EXECUTIONS_SERVER();
-            logger.info("Hitting executeMappingUri:" + executeMappingUri);
-            jsonResponse = Unirest.post(executeMappingUri)
-                    .field("mapping_document_download_url", mdDownloadUrl)
-                    .field("distribution_download_url", distributionDownloadUrl)
-                    .field("organization_id", organizationId)
-                    .field("use_cache", useCache)
-                    .asJson();
-            responseStatus = jsonResponse.getStatus();
-            logger.info("responseStatus = " + responseStatus);*/
             return this.postExecutions(
                     organizationId
 
@@ -228,7 +220,7 @@ public class ExecutionsWSController {
                     , callbackURL
 
                     //Execution related field
-                    , null
+                    , queryFileUrl
                     , null
                     , null
                     , null
@@ -244,24 +236,13 @@ public class ExecutionsWSController {
                     , null
 
             );
-
-
-
-
-
+            */
         } catch (Exception e) {
             ExecuteMappingResult internalError = new ExecuteMappingResult(
                     HttpURLConnection.HTTP_INTERNAL_ERROR, e.getMessage()
             );
             return internalError;
         }
-
-
-/*        ExecuteMappingResult executeMappingResult = new ExecuteMappingResult(
-                HttpURLConnection.HTTP_OK, "OK"
-        );
-        return executeMappingResult;*/
-
     }
 
     /*
@@ -274,13 +255,11 @@ public class ExecutionsWSController {
     */
 
 
-
-
     @RequestMapping(value="/ontology/resource_details", method= RequestMethod.GET)
     public OntologyResource getOntologyResourceDetails(
             @RequestParam(value="resource") String resource) {
         logger.info("GET /ontology/resource_details ...");
-        String uri = MappingPediaUtility.getClassURI(resource);
+        String uri = MPEUtility.getClassURI(resource);
 
         return this.jenaClient.getDetails(uri);
     }
@@ -479,6 +458,7 @@ public class ExecutionsWSController {
         logger.info("output_mediatype = " + outputMediaType);
         logger.info("callback_url = " + callbackURL);
         logger.info("pUpdateResource = " + pUpdateResource);
+        logger.info("query_file = " + queryFile);
 
 
 
@@ -579,7 +559,7 @@ public class ExecutionsWSController {
 
                 if(pMappingDocumentDownloadURL != null) {
                     md.setDownloadURL(pMappingDocumentDownloadURL);
-                    md.hash_$eq(MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
+                    md.hash_$eq(MPEUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
                 }
             } else {
                 md = new MappingDocument(pMappingDocumentId);
@@ -603,7 +583,7 @@ public class ExecutionsWSController {
                         } else {
                             if(pMappingDocumentDownloadURL != null) {
                                 md.setDownloadURL(pMappingDocumentDownloadURL);
-                                md.hash_$eq(MappingPediaUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
+                                md.hash_$eq(MPEUtility.calculateHash(pMappingDocumentDownloadURL, "UTF-8"));
                             }
                         }
                     }
@@ -653,8 +633,8 @@ public class ExecutionsWSController {
             }
 
 
-            Boolean useCache = MappingPediaUtility.stringToBoolean(pUseCache);
-            Boolean updateResource = MappingPediaUtility.stringToBoolean(pUpdateResource);
+            Boolean useCache = MPEUtility.stringToBoolean(pUseCache);
+            Boolean updateResource = MPEUtility.stringToBoolean(pUpdateResource);
             MappingExecution mappingExecution = new MappingExecution(
                     //md
                     unannotatedDistributions
@@ -663,7 +643,7 @@ public class ExecutionsWSController {
                     , outputFilename
                     , outputFileExtension
                     , outputMediaType
-                    , true
+                    //, true
                     , true
                     , true
                     , useCache
@@ -674,6 +654,7 @@ public class ExecutionsWSController {
                     , mdDownloadUrl
                     , mdLanguage
             );
+            mappingExecution.storeToCKAN_$eq(true);
             //IN THIS PARTICULAR CASE WE HAVE TO STORE THE EXECUTION RESULT ON CKAN
             return mappingExecutionController.executeMapping(mappingExecution);
 
@@ -848,7 +829,7 @@ public class ExecutionsWSController {
     {
         try {
             logger.info("[POST] /datasets_mappings_execute");
-            boolean generateManifestFile = MappingPediaUtility.stringToBoolean(pGenerateManifestFile);
+            boolean generateManifestFile = MPEUtility.stringToBoolean(pGenerateManifestFile);
 
             Agent organization = new Agent(organizationID);
 
@@ -954,10 +935,10 @@ public class ExecutionsWSController {
                         .asJson();
                 int addMappingDocumentResultStatusCode = postMappingsResponse.getStatus();
 
-                boolean useCache = MappingPediaUtility.stringToBoolean(pUseCache);
+                boolean useCache = MPEUtility.stringToBoolean(pUseCache);
                 if("true".equalsIgnoreCase(executeMapping)) {
                     if(addMappingDocumentResultStatusCode >= 200 && addMappingDocumentResultStatusCode < 300) {
-                        boolean updateResource = MappingPediaUtility.stringToBoolean(pUpdateResource);
+                        boolean updateResource = MPEUtility.stringToBoolean(pUpdateResource);
 
                         try {
                             MappingExecution mappingExecution = new MappingExecution(
@@ -965,7 +946,7 @@ public class ExecutionsWSController {
                                     dataset.getUnannotatedDistributions()
                                     , null, queryFileDownloadURL
                                     , outputFilename, outputFileExtension, outputMediaType
-                                    , true
+                                    //, true
                                     , true
                                     , true
                                     , useCache
@@ -976,6 +957,7 @@ public class ExecutionsWSController {
                                     , mappingDocument.getDownloadURL()
                                     , mappingDocument.getMapping_language()
                             );
+                            mappingExecution.storeToCKAN_$eq(true);
 
                             ExecuteMappingResult executeMappingResult =
                                     this.mappingExecutionController.executeMapping(
@@ -1083,7 +1065,7 @@ public class ExecutionsWSController {
         boolean useCache = true;
         try {
             maxMappingDocuments = Integer.parseInt(pMaxMappingDocuments);
-            useCache = MappingPediaUtility.stringToBoolean(pUseCache);
+            useCache = MPEUtility.stringToBoolean(pUseCache);
 
         } catch (Exception e) {
             logger.error("invalid value for maximum_mapping_documents!");
